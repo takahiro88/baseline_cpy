@@ -1,12 +1,9 @@
 from py_jama_rest_client.client import JamaClient
 import sys, os
-import openpyxl
-from openpyxl.drawing.image import Image
-import re
-import requests
-from io import BytesIO
 
-JAMA_URL           = 'https://stargate.jamacloud.com'
+#  2025.6.29  Takahiro Takahahi @ASE
+
+JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
 CREDENTIALS        = (os.environ.get('JAMA_CLIENT_ID'), os.environ.get('JAMA_CLIENT_SECRET')) 
 
