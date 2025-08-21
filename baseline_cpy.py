@@ -1,3 +1,4 @@
+
 from py_jama_rest_client.client import JamaClient
 import sys, os
 
@@ -6,6 +7,8 @@ import sys, os
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
 CREDENTIALS        = (os.environ.get('JAMA_CLIENT_ID'), os.environ.get('JAMA_CLIENT_SECRET')) 
+USER_PASS          = (os.environ.get('JAMA_USER'), os.environ.get('JAMA_PASS'))
+OAUTH_LOGIN        = False
 
 class BaselineMgr:
     def __init__(
@@ -19,9 +22,13 @@ class BaselineMgr:
         self.dst_proj_id = dst_proj_id  # Copy先 Project　IDを指定された情報で初期化
         self.dst_location_id = dst_location_id  # Copy先 親アイテム　IDを指定された情報で初期化
 
-        self.jama_client = JamaClient(JAMA_URL, credentials=CREDENTIALS, oauth=True,
-                                 allowed_results_per_page=50)
-                                 
+        if OAUTH_LOGIN:
+            self.jama_client = JamaClient(JAMA_URL, credentials=CREDENTIALS, oauth=True,
+                                    allowed_results_per_page=50)
+        else:
+            self.jama_client = JamaClient(JAMA_URL, credentials=USER_PASS,  oauth=False,
+                                          allowed_results_per_page=50)
+            
         self.lst_baseline_items =[]  # Baselineに含まれる Itemのリスト
 
     def get_items(
