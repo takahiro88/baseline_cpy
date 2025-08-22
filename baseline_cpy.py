@@ -2,7 +2,8 @@
 from py_jama_rest_client.client import JamaClient
 import sys, os
 
-#  2025.6.29  Takahiro Takahahi @ASE
+#  Ver 1.0 2025.6.29  Takahiro Takahahi @ASE
+#  Ver 2.0 2025.8.21  Supports top of tree completion
 
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
@@ -50,15 +51,58 @@ class BaselineMgr:
         id_map = {}
         counter = 0
 
-        for item in self.lst_baseline_items:
-            # 各アイテムの情報を取得
+        # Baseline内のアイテムID→アイテム情報の辞書を作成
+        baseline_item_dict = {item['id']: item for item in self.lst_baseline_items}
+
+        # sequenceでソート（親→子の順）
+        sorted_items = sorted(self.lst_baseline_items, key=lambda x: x['baselineLocation']['sequence'])
+
+        def ensure_parent_created(parent_old_id):
+            # すでに作成済みならID返す
+            if parent_old_id in id_map:
+                return id_map[parent_old_id]
+            # Baseline内に親があればそちらを優先
+            parent_baseline_item = baseline_item_dict.get(parent_old_id)
+            if parent_baseline_item:
+                # sequence順で先に作成されているはず
+                return id_map.get(parent_old_id)
+            # Baselineに親がなければget_itemで最新Ver取得
+            parent_item = self.jama_client.get_item(parent_old_id)
+            parent_type = parent_item['itemType']
+            parent_fields = parent_item['fields']
+            parent_info2 = parent_item.get("location", {}).get("parent", {})
+            # location決定
+            if "item" in parent_info2:
+                grand_parent_old_id = parent_info2["item"]
+                grand_parent_new_id = ensure_parent_created(grand_parent_old_id)
+                locationItem = {'item': grand_parent_new_id}
+            elif "project" in parent_info2:
+                if self.dst_location_id != 0:
+                    locationItem = {'item': self.dst_location_id}
+                else:
+                    locationItem = {'project': self.dst_proj_id}
+            else:
+                if self.dst_location_id != 0:
+                    locationItem = {'item': self.dst_location_id}
+                else:
+                    locationItem = {'project': self.dst_proj_id}
+
+            for k in ['documentKey', 'globalId', 'release', 'release1']:
+                if k in parent_fields:
+                    del parent_fields[k]
+            child_type_id = parent_item.get('childItemType', 0)
+            parent_new_id = self.jama_client.post_item(project=self.dst_proj_id, item_type_id=parent_type,
+                                        child_item_type_id=child_type_id,
+                                        location=locationItem, fields=parent_fields)
+            id_map[parent_old_id] = parent_new_id
+            return parent_new_id
+
+
+        for item in sorted_items:
             item_type = item['itemType']
             fields = item['fields']
             old_id = item["id"]
 
-            ###############################
-            #  コピー先ロケーションの処理
-            ###############################
             # コピーするitemの親IDを取得
             parent_info = item.get("baselineLocation", {}).get("parent", {})
             parent_ids = parent_info.get("item")
@@ -67,8 +111,8 @@ class BaselineMgr:
                 parent_old_id = parent_ids[0]
                 parent_new_id = id_map.get(parent_old_id)
                 if parent_new_id is None:
-                    raise Exception(f"親ID {parent_old_id} がまだ作成されていません")
-                locationItem = {'item':parent_new_id}
+                    parent_new_id = ensure_parent_created(parent_old_id)
+                locationItem = {'item': parent_new_id}
 
             else: #　Baselineの中のルートアイテムをコピーする場合(親IDがいない)
                 if self.dst_location_id != 0:
@@ -82,12 +126,11 @@ class BaselineMgr:
             dct_fields=fields
 
             # コピーできないフィールド値を削除
-            del dct_fields['documentKey']
-            del dct_fields['globalId']
-            if "release" in dct_fields:
-                del dct_fields['release']
-            if "release1" in dct_fields:
-                del dct_fields['release1']
+            for k in ['documentKey', 'globalId', 'release', 'release1']:
+                if k in dct_fields:
+                    del dct_fields[k]
+
+            child_type_id = item.get('childItemType', 0)
 
             if "childItemType" in item:
                 child_type_id = item['childItemType']
@@ -117,6 +160,7 @@ if __name__ == '__main__':
     dst_proj_id = (int)(args[2])
     dst_location_id = (int)(args[3])
 
+    print("Start copying baseline. Ver 2.0")
     baline_mgr = BaselineMgr( baseline_id,dst_proj_id,dst_location_id)
     baline_mgr.get_items()
     baline_mgr.post_items()
