@@ -15,9 +15,9 @@ baseline_id : コピーするbaselineのID<br>
 dst_proj_id : コピー先のProject ID<br>
 dst_location_id : コピー先のアイテムID（Projectルートにコピーする場合は０を指定する事）<br>
 
-<<<<<<< HEAD
+
 =======
 
 ## History
 Ver2.0  ツリーの枝葉をコピーする際に上部のSet,Componentを補完する機能を追加
->>>>>>> 172f0a3 (Ver 2.0)
+
