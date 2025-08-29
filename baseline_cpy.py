@@ -4,6 +4,7 @@ import sys, os
 
 #  Ver 1.0 2025.6.29  Takahiro Takahahi @ASE
 #  Ver 2.0 2025.8.21  Supports top of tree completion
+#  Ver 3.0 2025.8.29  Supports setting relationships
 
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
@@ -43,12 +44,40 @@ class BaselineMgr:
 
         return
 
+    def set_relationships(
+        self
+    ) -> None:
+
+        for old_id in self.id_map.keys():
+            try:
+                lst_relation=self.jama_client.get_baselines_versioneditems_versionedrelationships(self.baseline_id,old_id)
+            except Exception as e:
+                if "Resource not found. " not in str(e):
+                    print(f"Error fetching relationships for origin id {old_id}: {e}")
+            else:
+                for rel in lst_relation:
+                    source_old_id = rel.get("fromItem", 0)
+                    target_old_id = rel.get("toItem", 0)
+                    relationshipType = rel["relationshipType"][0]
+                    source_new_id = self.id_map.get(source_old_id[0],None)
+                    target_new_id = self.id_map.get(target_old_id[0],None)
+                    if source_new_id and target_new_id:
+                        # 関係を設定
+                        try:
+                            ret = self.jama_client.post_relationship(from_item=source_new_id, to_item=target_new_id, relationship_type=relationshipType)
+                        except Exception as e:
+                            pass
+                        else:
+                            if ret:
+                                print(f"Relationship set: {source_new_id} -> {target_new_id}")
+        
+        return            
     def post_items(
         self
     ) -> None:
 
         # 新しいIDマッピング: 元ID → 新ID
-        id_map = {}
+        self.id_map = {}
         counter = 0
 
         # Baseline内のアイテムID→アイテム情報の辞書を作成
@@ -59,13 +88,13 @@ class BaselineMgr:
 
         def ensure_parent_created(parent_old_id):
             # すでに作成済みならID返す
-            if parent_old_id in id_map:
-                return id_map[parent_old_id]
+            if parent_old_id in self.id_map:
+                return self.id_map[parent_old_id]
             # Baseline内に親があればそちらを優先
             parent_baseline_item = baseline_item_dict.get(parent_old_id)
             if parent_baseline_item:
                 # sequence順で先に作成されているはず
-                return id_map.get(parent_old_id)
+                return self.id_map.get(parent_old_id)
             # Baselineに親がなければget_itemで最新Ver取得
             parent_item = self.jama_client.get_item(parent_old_id)
             parent_type = parent_item['itemType']
@@ -94,7 +123,7 @@ class BaselineMgr:
             parent_new_id = self.jama_client.post_item(project=self.dst_proj_id, item_type_id=parent_type,
                                         child_item_type_id=child_type_id,
                                         location=locationItem, fields=parent_fields)
-            id_map[parent_old_id] = parent_new_id
+            self.id_map[parent_old_id] = parent_new_id
             return parent_new_id
 
 
@@ -109,7 +138,7 @@ class BaselineMgr:
 
             if parent_ids: # 親IDが存在する場合
                 parent_old_id = parent_ids[0]
-                parent_new_id = id_map.get(parent_old_id)
+                parent_new_id = self.id_map.get(parent_old_id)
                 if parent_new_id is None:
                     parent_new_id = ensure_parent_created(parent_old_id)
                 locationItem = {'item': parent_new_id}
@@ -141,10 +170,11 @@ class BaselineMgr:
             new_id = self.jama_client.post_item(project= self.dst_proj_id,item_type_id=itemTypeID, \
                                        child_item_type_id=child_type_id,\
                                        location=locationItem,fields=dct_fields)
+            
             counter += 1
             print(f"\rデータを {counter} 件コピーしました", end='', flush=True) 
             # IDマップを更新
-            id_map[old_id] = new_id            
+            self.id_map[old_id] = new_id            
 
         return
 
@@ -153,15 +183,16 @@ if __name__ == '__main__':
 
     refresh = True
     if 4 != len(args):
-            print("Usage:python baseline_cpy [baseline_id] [dst_proj_id] [dst_location_id]")
-            sys.exit()
+        print("Usage:python baseline_cpy [baseline_id] [dst_proj_id] [dst_location_id]")
+        sys.exit()
 
     baseline_id = (int)(args[1])
     dst_proj_id = (int)(args[2])
     dst_location_id = (int)(args[3])
 
-    print("Start copying baseline. Ver 2.0")
+    print("Start copying baseline. Ver 3.0")
     baline_mgr = BaselineMgr( baseline_id,dst_proj_id,dst_location_id)
     baline_mgr.get_items()
     baline_mgr.post_items()
+    baline_mgr.set_relationships()
     print(f"\nBaseline {baseline_id} のアイテムをプロジェクト {dst_proj_id} にコピーしました。")

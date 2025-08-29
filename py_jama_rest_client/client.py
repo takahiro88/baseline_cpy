@@ -3,6 +3,10 @@ import logging
 
 from .core import Core, CoreException
 
+#Customized for baseline_cpy version
+#Ignore not found error at get_baselines_versioneditems_versionedrelationships()
+#Ignore  AlreadyExistsException at post_relationship()
+
 # This is the py_jama_rest_client logger.
 py_jama_rest_client_logger = logging.getLogger('py_jama_rest_client')
 
@@ -154,6 +158,8 @@ class JamaClient:
         except CoreException as err:
             py_jama_rest_client_logger.error(err)
             raise APIException(str(err))
+        if response.status_code == 404:
+            return []
         JamaClient.__handle_response_status(response)
         return response.json()['data']
         
@@ -610,10 +616,37 @@ class JamaClient:
 
         """
         resource_path = 'relationships'
-        params = {'project': project_id}
-        relationship_data = self.__get_all(resource_path, params=params,
-                                           allowed_results_per_page=allowed_results_per_page)
+        params = {'project': project_id, 'maxResults': 1, 'omitCount': True, 'lastId': 1}
+        relationship_data = []
+
+        try:
+            response = self.__core.get(resource_path, params=params)
+        except CoreException as err:
+            py_jama_rest_client_logger.error(err)
+            raise APIException(str(err))
+        JamaClient.__handle_response_status(response)
+
+        page_json = response.json()
+        page_info = page_json['meta']['pageInfo']
+        page_data = page_json.get('data')
+        relationship_data.extend(page_data)
+        
+        while page_info['resultCount'] > 0:
+            lastId = page_json['data'][-1]['id']
+            params = {'project': project_id, 'maxResults': allowed_results_per_page, 'lastId' : lastId, 'omitCount': "true"}
+            try:
+                response = self.__core.get(resource_path, params=params)
+            except CoreException as err:
+                py_jama_rest_client_logger.error(err)
+                raise APIException(str(err))
+            JamaClient.__handle_response_status(response)
+
+            page_json = response.json()
+            page_info = page_json['meta']['pageInfo']
+            page_data = page_json.get('data')
+            relationship_data.extend(page_data)
         return relationship_data
+
 
     def get_relationship(self, relationship_id):
         """
@@ -1240,6 +1273,8 @@ class JamaClient:
         except CoreException as err:
             py_jama_rest_client_logger.error(err)
             raise APIException(str(err))
+        if response.status_code == 400:
+            return None
         JamaClient.__handle_response_status(response)
         return response.json()['meta']['id']
 
