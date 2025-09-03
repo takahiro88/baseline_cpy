@@ -5,6 +5,9 @@ import sys, os
 #  Ver 1.0 2025.6.29  Takahiro Takahahi @ASE
 #  Ver 2.0 2025.8.21  Supports top of tree completion
 #  Ver 3.0 2025.8.29  Supports setting relationships
+#  Ver 3.0 2025.8.29  Supports setting relationships
+#  Ver 3.1 2025.9.3   Added retry
+ver_str = "Ver 3.1"
 
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
@@ -120,9 +123,23 @@ class BaselineMgr:
                 if k in parent_fields:
                     del parent_fields[k]
             child_type_id = parent_item.get('childItemType', 0)
-            parent_new_id = self.jama_client.post_item(project=self.dst_proj_id, item_type_id=parent_type,
-                                        child_item_type_id=child_type_id,
-                                        location=locationItem, fields=parent_fields)
+            retry = True
+            retry_count = 0
+            while retry:
+                try:
+                    parent_new_id = self.jama_client.post_item(project=self.dst_proj_id, item_type_id=parent_type,
+                                                child_item_type_id=child_type_id,
+                                                location=locationItem, fields=parent_fields)
+                except Exception:
+                    retry_count += 1
+                    if retry_count < 5:
+                        print(f"Retrying to create parent item {parent_old_id} (attempt {retry_count})...")
+                    else:
+                        print(f"Failed to create parent item {parent_old_id} after {retry_count} attempts.")
+                        raise
+                else:
+                    retry = False
+
             self.id_map[parent_old_id] = parent_new_id
             return parent_new_id
 
@@ -167,10 +184,23 @@ class BaselineMgr:
                 child_type_id = 0
 
             # アイテムをコピー
-            new_id = self.jama_client.post_item(project= self.dst_proj_id,item_type_id=itemTypeID, \
-                                       child_item_type_id=child_type_id,\
-                                       location=locationItem,fields=dct_fields)
-            
+            retry = True
+            retry_count = 0
+            while retry:
+                try:
+                    new_id = self.jama_client.post_item(project=self.dst_proj_id, item_type_id=itemTypeID,
+                                                         child_item_type_id=child_type_id,
+                                                         location=locationItem, fields=dct_fields)
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count < 5:
+                        print(f"Retrying to create item {old_id} (attempt {retry_count})...")
+                    else:
+                        print(f"Failed to create item {old_id} after {retry_count} attempts.")
+                        raise
+                else:
+                    retry = False
+
             counter += 1
             print(f"\rデータを {counter} 件コピーしました", end='', flush=True) 
             # IDマップを更新
@@ -190,7 +220,7 @@ if __name__ == '__main__':
     dst_proj_id = (int)(args[2])
     dst_location_id = (int)(args[3])
 
-    print("Start copying baseline. Ver 3.0")
+    print("Start copying baseline " + ver_str)
     baline_mgr = BaselineMgr( baseline_id,dst_proj_id,dst_location_id)
     baline_mgr.get_items()
     baline_mgr.post_items()
