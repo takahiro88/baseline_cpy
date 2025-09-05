@@ -7,7 +7,9 @@ import sys, os
 #  Ver 3.0 2025.8.29  Supports setting relationships
 #  Ver 3.0 2025.8.29  Supports setting relationships
 #  Ver 3.1 2025.9.3   Added retry
-ver_str = "Ver 3.1"
+#  Ver 3.2 2025.9.5   Skip API error after 3 retries
+
+ver_str = "Ver 3.2"
 
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
@@ -50,7 +52,7 @@ class BaselineMgr:
     def set_relationships(
         self
     ) -> None:
-
+        print('\n')
         for old_id in self.id_map.keys():
             try:
                 lst_relation=self.jama_client.get_baselines_versioneditems_versionedrelationships(self.baseline_id,old_id)
@@ -132,10 +134,10 @@ class BaselineMgr:
                                                 location=locationItem, fields=parent_fields)
                 except Exception:
                     retry_count += 1
-                    if retry_count < 5:
+                    if retry_count < 3:
                         print(f"Retrying to create parent item {parent_old_id} (attempt {retry_count})...")
                     else:
-                        print(f"Failed to create parent item {parent_old_id} after {retry_count} attempts.")
+                        print(f"Skip to create this item {parent_old_id} after {retry_count} attempts.")
                         raise
                 else:
                     retry = False
@@ -193,10 +195,10 @@ class BaselineMgr:
                                                          location=locationItem, fields=dct_fields)
                 except Exception as e:
                     retry_count += 1
-                    if retry_count < 5:
+                    if retry_count < 3:
                         print(f"Retrying to create item {old_id} (attempt {retry_count})...")
                     else:
-                        print(f"Failed to create item {old_id} after {retry_count} attempts.")
+                        print(f"F to create item {old_id} after {retry_count} attempts.")
                         raise
                 else:
                     retry = False
