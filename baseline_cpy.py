@@ -8,8 +8,9 @@ import sys, os
 #  Ver 3.0 2025.8.29  Supports setting relationships
 #  Ver 3.1 2025.9.3   Added retry
 #  Ver 3.2 2025.9.5   Skip API error after 3 retries
+#  Ver 3.3 2025.9.9   Skip deleted item tree
 
-ver_str = "Ver 3.2"
+ver_str = "Ver 3.3"
 
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
@@ -101,7 +102,10 @@ class BaselineMgr:
                 # sequence順で先に作成されているはず
                 return self.id_map.get(parent_old_id)
             # Baselineに親がなければget_itemで最新Ver取得
-            parent_item = self.jama_client.get_item(parent_old_id)
+            try:
+                parent_item = self.jama_client.get_item(parent_old_id)
+            except Exception:
+                return None
             parent_type = parent_item['itemType']
             parent_fields = parent_item['fields']
             parent_info2 = parent_item.get("location", {}).get("parent", {})
@@ -160,6 +164,8 @@ class BaselineMgr:
                 parent_new_id = self.id_map.get(parent_old_id)
                 if parent_new_id is None:
                     parent_new_id = ensure_parent_created(parent_old_id)
+                if parent_new_id is None:
+                    continue  # 親の作成に失敗した場合はスキップ
                 locationItem = {'item': parent_new_id}
 
             else: #　Baselineの中のルートアイテムをコピーする場合(親IDがいない)
@@ -198,15 +204,16 @@ class BaselineMgr:
                     if retry_count < 3:
                         print(f"Retrying to create item {old_id} (attempt {retry_count})...")
                     else:
-                        print(f"F to create item {old_id} after {retry_count} attempts.")
-                        raise
+                        print(f"Failed to create item {old_id} after {retry_count} attempts.")
+                        break
                 else:
                     retry = False
 
-            counter += 1
-            print(f"\rデータを {counter} 件コピーしました", end='', flush=True) 
-            # IDマップを更新
-            self.id_map[old_id] = new_id            
+            if retry_count < 3: #Created successfully
+                counter += 1
+                print(f"\rデータを {counter} 件コピーしました", end='', flush=True) 
+                # IDマップを更新
+                self.id_map[old_id] = new_id            
 
         return
 
