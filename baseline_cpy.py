@@ -9,8 +9,9 @@ import sys, os
 #  Ver 3.1 2025.9.3   Added retry
 #  Ver 3.2 2025.9.5   Skip API error after 3 retries
 #  Ver 3.3 2025.9.9   Skip deleted item tree
+#  Ver 3.4 2025.9.10  Output failed item list to file
 
-ver_str = "Ver 3.3"
+ver_str = "Ver 3.4"
 
 JAMA_URL           = (os.environ.get('JAMA_URL'))
 # 認証情報は環境変数にある前提
@@ -29,6 +30,7 @@ class BaselineMgr:
         self.baseline_id = baseline_id  # Baseline　IDを指定された情報で初期化
         self.dst_proj_id = dst_proj_id  # Copy先 Project　IDを指定された情報で初期化
         self.dst_location_id = dst_location_id  # Copy先 親アイテム　IDを指定された情報で初期化
+        self.lst_failed_items = []  # コピーに失敗したアイテムのリスト
 
         if OAUTH_LOGIN:
             self.jama_client = JamaClient(JAMA_URL, credentials=CREDENTIALS, oauth=True,
@@ -154,6 +156,7 @@ class BaselineMgr:
             item_type = item['itemType']
             fields = item['fields']
             old_id = item["id"]
+            doc_key = item["documentKey"]
 
             # コピーするitemの親IDを取得
             parent_info = item.get("baselineLocation", {}).get("parent", {})
@@ -165,6 +168,8 @@ class BaselineMgr:
                 if parent_new_id is None:
                     parent_new_id = ensure_parent_created(parent_old_id)
                 if parent_new_id is None:
+                    self.lst_failed_items.append(doc_key)
+                    print(f"Skipping item {doc_key} as its parent {parent_old_id} could not be created.")
                     continue  # 親の作成に失敗した場合はスキップ
                 locationItem = {'item': parent_new_id}
 
@@ -215,6 +220,12 @@ class BaselineMgr:
                 # IDマップを更新
                 self.id_map[old_id] = new_id            
 
+        if len(self.lst_failed_items) > 0:
+            filename = "failed_items.txt"
+            open(filename, "w").write("\n".join(map(str, self.lst_failed_items)))
+            # ANSIエスケープで黄色ハイライト
+            highlight = f"\033[33m{filename}\033[0m"
+            print(f"\nFailed to copy {len(self.lst_failed_items)} items. See {highlight} for details.")
         return
 
 if __name__ == '__main__':
